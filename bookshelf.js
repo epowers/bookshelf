@@ -38,7 +38,7 @@ define(function(Backbone, _, when, Knex, inflection, triggerThen) {
 
     // Returns an instance of the query builder.
     builder: function(table) {
-      return Knex(table);
+      return Bookshelf.Knex(table);
     },
 
     // If there are no arguments, return the current object's
@@ -1213,10 +1213,100 @@ define(function(Backbone, _, when, Knex, inflection, triggerThen) {
 
     // If an object with this name already exists in `Knex.Instances`, we will
     // use that copy of `Knex` without trying to re-initialize.
-    var Builder = (Knex[name] || Knex.Initialize(name, options));
+    var Builder_ = (Bookshelf.Knex[name] || Bookshelf.Knex.Initialize(name, options))
+      , Builder = _.extend( function() {
+        var super_ = Builder_.apply( this, arguments );
+        var self = _.extend( {}, super_, {
+          // Override Knex methods to support Model and Collection object arguments.
+          join: function( src, dst, type ) {
+
+            // detect bookshelf objects
+            // arguments:
+            // option A:
+            //  this = has source table string
+            //  src = target relationship object
+            //  dst = type or undefined
+            // option B:
+            //  src = source model collection or model base class or instance
+            //  dst = string of relationship method
+            // option C:
+            //  src = source model collection or model base class or instance
+            //  dst = target relationship object
+            // option D:
+            //  src = string of source table
+            //  dst = target relationship object
+
+            // option A
+            if (src && src.relatedData && typeof this.table === 'string' && (!dst || (typeof dst === 'string' && !type))) {
+              type = type || dst;
+              dst = src;
+              src = this.table;
+              // converted to option D
+            }
+
+            if (dst) {
+              if (_.isObject(src)) {
+                // option B
+                if (typeof dst === 'string') {
+                  var src_inst = src instanceof Model ? src
+                    : src.prototype instanceof Model ? new src
+                    : src instanceof Collection && src.model && src.model.prototype instanceof Model ? new src.model
+                    : src.prototype instanceof Collection
+                      && src.prototype.model && src.prototype.model.prototype instanceof Model
+                      ? new src.prototype.model
+                    : undefined;
+
+                  if (src_inst) {
+                    var dst_rel = _.result( src_inst, dst );
+                    if (dst_rel && dst_rel.relatedData) {
+                      src = src_inst;
+                      dst = dst_rel;
+                      // converted to option C
+                    }
+                  }
+                }
+
+                // option C
+                src = _.result( src, 'tableName' )
+                  || src.model && _.result( src.model, 'tableName')
+                  || src.prototype && (
+                    _.result( src.prototype, 'tableName')
+                    || src.prototype.model && (
+                      _.result( src.prototype.model, 'tableName')
+                      || src.prototype.model.prototype && _.result( src.prototype.model.prototype, 'tableName')
+                  )) || src;
+                // converted to option D
+              }
+
+              // option D
+              if (typeof src === 'string' && dst.relatedData) {
+                var tableName = src
+                  //, joinTableName = dst.relatedData.joinTableName
+                  , joinTableName = _.result( dst, 'tableName' )
+                  , foreignKey = dst.relatedData.foreignKey
+                  , otherKey = dst.relatedData.otherKey
+                  //, relatedType = dst.relatedData.type  // 'belongsToMany', 'morphMany', etc.
+                  , table = joinTableName
+                  , first = joinTableName + '.' + foreignKey
+                  , operator = '='
+                  , second = tableName + '.' + otherKey
+                  ;
+                return super_.join.call( this, table, first, operator, second, type );
+              }
+            }
+
+            return super_.join.apply( this, arguments );
+          },
+        });
+        return self;
+      }, Builder_ );
 
     if (name === 'main') {
-      Target = Bookshelf.Instances['main'] = Bookshelf;
+      // replace default Knex with our custom Builder.
+      Target = Bookshelf.Instances['main'] = _.extend( Bookshelf, {
+        Knex: Builder,
+        Transaction: Builder.Transaction
+      });
     } else {
       Target = Bookshelf.Instances[name] = {};
 
