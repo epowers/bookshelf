@@ -1267,18 +1267,31 @@ define(function(Backbone, _, when, Knex, inflection, triggerThen) {
 
                   // option C
                   if (src && dst.relatedData) {
-                    var tableName = _.result( src, 'tableName' )
-                      , idAttribute = _.result( src, 'idAttribute' )
-                      //, relatedType = dst.relatedData.type  // 'belongsToMany', 'morphMany', etc.
-                      //, joinTableName = dst.relatedData.joinTableName
-                      , joinTableName = _.result( dst, 'tableName' )
+                    var srcTableName = _.result( src, 'tableName' )
+                      , srcId = _.result( src, 'idAttribute' )
+                      , dstTableName = _.result( dst, 'tableName' )
+                      , dstId = _.result( dst, 'idAttribute' )
+                      , relatedType = dst.relatedData.type  // 'belongsToMany', 'morphMany', etc.
+                      , joinTableName = dst.relatedData.joinTableName
                       , foreignKey = dst.relatedData.foreignKey
-                      , otherKey = dst.relatedData.otherKey || idAttribute
-                      , table = joinTableName
-                      , first = joinTableName + '.' + foreignKey
+                      , otherKey = dst.relatedData.otherKey
+                      , table = dstTableName
+                      , first = dstTableName + '.' + foreignKey
                       , operator = '='
-                      , second = tableName + '.' + otherKey
+                      , second = srcTableName + '.' + (otherKey || srcId)
                       ;
+                    if (relatedType == 'belongsToMany' ) {
+                      // first join
+                      table = joinTableName
+                      first = joinTableName + '.' + otherKey
+                      second = srcTableName + '.' + srcId
+                      super_.join.call( this, table, first, operator, second, type );
+
+                      // second join
+                      table = dstTableName
+                      first = dstTableName + '.' + dstId
+                      second = joinTableName + '.' + foreignKey
+                    }
                     return super_.join.call( this, table, first, operator, second, type );
                   }
                 }
