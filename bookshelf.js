@@ -1232,6 +1232,9 @@ define(function(Backbone, _, when, Knex, inflection, triggerThen) {
             // option C:
             //  src = source model collection or model base class or instance
             //  dst = target relationship object
+            // option D:
+            //  src = source model collection or model base class or instance
+            //  dst = sub-query function
 
             // option A
             if (src && src.relatedData && typeof this.table === 'string' && (!dst || (typeof dst === 'string' && !type))) {
@@ -1293,6 +1296,14 @@ define(function(Backbone, _, when, Knex, inflection, triggerThen) {
                       second = joinTableName + '.' + foreignKey
                     }
                     return super_.join.call( this, table, first, operator, second, type );
+                  }
+
+                  // option D
+                  if (src_inst && typeof dst === 'function') {
+                    var srcTableName = _.result( src_inst, 'tableName' );
+                    if (srcTableName) {
+                        return super_.join.call( this, srcTableName, dst, type );
+                    }
                   }
                 }
               }
