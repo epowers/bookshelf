@@ -1191,6 +1191,19 @@ define(function(Backbone, _, when, Knex, inflection, triggerThen) {
     };
   }());
 
+  // Utility for converting an argument to a model instance
+  function _convertToModelInstance( src ) {
+    if (_.isObject(src)) {
+      return src instanceof Model ? src
+        : src.prototype instanceof Model ? new src
+        : src instanceof Collection && src.model && src.model.prototype instanceof Model ? new src.model
+        : src.prototype instanceof Collection
+            && src.prototype.model && src.prototype.model.prototype instanceof Model
+            ? new src.prototype.model
+        : undefined;
+    }
+  }
+
   // References to the default `Knex` and `Knex.Transaction`, overwritten
   // when a new database connection is created in `Initialize` below.
   Bookshelf.Knex = Knex;
@@ -1246,15 +1259,7 @@ define(function(Backbone, _, when, Knex, inflection, triggerThen) {
 
             if (dst) {
               if (_.isObject(src)) {
-                var src_inst = src === this ? this
-                : src instanceof Model ? src
-                : src.prototype instanceof Model ? new src
-                : src instanceof Collection && src.model && src.model.prototype instanceof Model ? new src.model
-                : src.prototype instanceof Collection
-                    && src.prototype.model && src.prototype.model.prototype instanceof Model
-                    ? new src.prototype.model
-                : undefined;
-
+                var src_inst = src === this ? this : _convertToModelInstance( src );
                 if (src_inst) {
                   // option B
                   if (typeof dst === 'string') {
@@ -1313,6 +1318,17 @@ define(function(Backbone, _, when, Knex, inflection, triggerThen) {
           },
           whereIn: function(column, values, bool, condition) {
             if (_.isFunction(values)) {
+              // convert column model/collection to string
+              var src = _convertToModelInstance( column );
+              if (src) {
+                var srcTableName = _.result( src, 'tableName' )
+                  , srcId = _.result( src, 'idAttribute' )
+                  ;
+                if (srcTableName && srcId) {
+                  column = srcTableName + '.' + srcId;
+                }
+              }
+              // Knex whereIn with our Builder:
               condition = condition || 'In';
               bool || (bool = 'and');
               var callback = values;
