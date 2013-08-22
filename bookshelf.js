@@ -1204,6 +1204,32 @@ define(function(Backbone, _, when, Knex, inflection, triggerThen) {
     }
   }
 
+  function _convertModelToTableName( arg ) {
+    // convert column model/collection to string
+    var src = _convertToModelInstance( arg );
+    if (src) {
+      var srcTableName = _.result( src, 'tableName' );
+      if (srcTableName) {
+        arg = srcTableName;
+      }
+    }
+    return arg;
+  }
+
+  function _convertModelToColumn( arg ) {
+    // convert column model/collection to string
+    var src = _convertToModelInstance( arg );
+    if (src) {
+      var srcTableName = _.result( src, 'tableName' )
+        , srcId = _.result( src, 'idAttribute' )
+        ;
+      if (srcTableName && srcId) {
+        arg = srcTableName + '.' + srcId;
+      }
+    }
+    return arg;
+  }
+
   // References to the default `Knex` and `Knex.Transaction`, overwritten
   // when a new database connection is created in `Initialize` below.
   Bookshelf.Knex = Knex;
@@ -1317,18 +1343,12 @@ define(function(Backbone, _, when, Knex, inflection, triggerThen) {
             return super_.join.apply( this, arguments );
           },
           whereIn: function(column, values, bool, condition) {
+            // convert column model/collection to string
+            var args = _.toArray(arguments);
+            args[0] = column = _convertModelToColumn( column );
+
+            // Knex whereIn with our Builder:
             if (_.isFunction(values)) {
-              // convert column model/collection to string
-              var src = _convertToModelInstance( column );
-              if (src) {
-                var srcTableName = _.result( src, 'tableName' )
-                  , srcId = _.result( src, 'idAttribute' )
-                  ;
-                if (srcTableName && srcId) {
-                  column = srcTableName + '.' + srcId;
-                }
-              }
-              // Knex whereIn with our Builder:
               condition = condition || 'In';
               bool || (bool = 'and');
               var callback = values;
@@ -1338,10 +1358,28 @@ define(function(Backbone, _, when, Knex, inflection, triggerThen) {
               this.wheres.push({type: condition, column: column, query: query, bool: bool});
               Array.prototype.push.apply(this.bindings, query.bindings);
               return this;
-
-              return this._whereInSub(column, values, bool, (condition || 'In'));
             }
-            return super_.whereIn.apply( this, arguments );
+
+            // pass through
+            return super_.whereIn.apply( this, args );
+          },
+          from: function() {
+            // convert table model/collection to string
+            var args = _.toArray(arguments);
+            args[0] = _convertModelToTableName( args[0] );
+            return super_.from.apply( this, args );
+          },
+          distinct: function(column) {
+            // convert column model/collection to string
+            var args = _.toArray(arguments);
+            args[0] = _convertModelToColumn( args[0] );
+            return super_.distinct.apply( this, args );
+          },
+          groupBy: function(column) {
+            // convert column model/collection to string
+            var args = _.toArray(arguments);
+            args[0] = _convertModelToColumn( args[0] );
+            return super_.groupBy.apply( this, args );
           },
         });
         return self;
