@@ -1223,7 +1223,7 @@ define(function(Backbone, _, when, Knex, inflection, triggerThen) {
             // detect bookshelf objects
             // arguments:
             // option A:
-            //  this = has source table string
+            //  this = has source table string and source table id attribute
             //  src = target relationship object
             //  dst = type or undefined
             // option B:
@@ -1232,70 +1232,76 @@ define(function(Backbone, _, when, Knex, inflection, triggerThen) {
             // option C:
             //  src = source model collection or model base class or instance
             //  dst = target relationship object
-            // option D:
-            //  src = string of source table
-            //  dst = target relationship object
 
             // option A
             if (src && src.relatedData && typeof this.table === 'string' && (!dst || (typeof dst === 'string' && !type))) {
               type = type || dst;
               dst = src;
-              src = this.table;
-              // converted to option D
+              src = this;
+              // converted to option C
             }
 
             if (dst) {
               if (_.isObject(src)) {
-                // option B
-                if (typeof dst === 'string') {
-                  var src_inst = src instanceof Model ? src
-                    : src.prototype instanceof Model ? new src
-                    : src instanceof Collection && src.model && src.model.prototype instanceof Model ? new src.model
-                    : src.prototype instanceof Collection
-                      && src.prototype.model && src.prototype.model.prototype instanceof Model
-                      ? new src.prototype.model
-                    : undefined;
+                var src_inst = src === this ? this
+                : src instanceof Model ? src
+                : src.prototype instanceof Model ? new src
+                : src instanceof Collection && src.model && src.model.prototype instanceof Model ? new src.model
+                : src.prototype instanceof Collection
+                    && src.prototype.model && src.prototype.model.prototype instanceof Model
+                    ? new src.prototype.model
+                : undefined;
 
-                  if (src_inst) {
+                if (src_inst) {
+                  // option B
+                  if (typeof dst === 'string') {
                     var dst_rel = _.result( src_inst, dst );
                     if (dst_rel && dst_rel.relatedData) {
                       src = src_inst;
                       dst = dst_rel;
                       // converted to option C
                     }
+                  } else if (dst.relatedData) {
+                    src = src_inst;
+                  }
+
+                  // option C
+                  if (src && dst.relatedData) {
+                    var tableName = _.result( src, 'tableName' )
+                      , idAttribute = _.result( src, 'idAttribute' )
+                      //, relatedType = dst.relatedData.type  // 'belongsToMany', 'morphMany', etc.
+                      //, joinTableName = dst.relatedData.joinTableName
+                      , joinTableName = _.result( dst, 'tableName' )
+                      , foreignKey = dst.relatedData.foreignKey
+                      , otherKey = dst.relatedData.otherKey || idAttribute
+                      , table = joinTableName
+                      , first = joinTableName + '.' + foreignKey
+                      , operator = '='
+                      , second = tableName + '.' + otherKey
+                      ;
+                    return super_.join.call( this, table, first, operator, second, type );
                   }
                 }
-
-                // option C
-                src = _.result( src, 'tableName' )
-                  || src.model && _.result( src.model, 'tableName')
-                  || src.prototype && (
-                    _.result( src.prototype, 'tableName')
-                    || src.prototype.model && (
-                      _.result( src.prototype.model, 'tableName')
-                      || src.prototype.model.prototype && _.result( src.prototype.model.prototype, 'tableName')
-                  )) || src;
-                // converted to option D
-              }
-
-              // option D
-              if (typeof src === 'string' && dst.relatedData) {
-                var tableName = src
-                  //, joinTableName = dst.relatedData.joinTableName
-                  , joinTableName = _.result( dst, 'tableName' )
-                  , foreignKey = dst.relatedData.foreignKey
-                  , otherKey = dst.relatedData.otherKey
-                  //, relatedType = dst.relatedData.type  // 'belongsToMany', 'morphMany', etc.
-                  , table = joinTableName
-                  , first = joinTableName + '.' + foreignKey
-                  , operator = '='
-                  , second = tableName + '.' + otherKey
-                  ;
-                return super_.join.call( this, table, first, operator, second, type );
               }
             }
 
             return super_.join.apply( this, arguments );
+          },
+          whereIn: function(column, values, bool, condition) {
+            if (_.isFunction(values)) {
+              condition = condition || 'In';
+              bool || (bool = 'and');
+              var callback = values;
+              condition += 'Sub';
+              var query = new Builder(this);
+              callback.call(query, query);
+              this.wheres.push({type: condition, column: column, query: query, bool: bool});
+              Array.prototype.push.apply(this.bindings, query.bindings);
+              return this;
+
+              return this._whereInSub(column, values, bool, (condition || 'In'));
+            }
+            return super_.whereIn.apply( this, arguments );
           },
         });
         return self;
